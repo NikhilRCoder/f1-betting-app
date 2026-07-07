@@ -8,12 +8,15 @@ import pytest
 from analysis import form_calculator
 from database.connection import get_connection, initialize_database
 from visualizations import charts, theme
+from services.bet_service import BetService
 from services.circuit_service import CircuitService
 from services.constructor_service import ConstructorService
 from services.driver_service import DriverService
+from services.odds_service import OddsService
 from services.prediction_service import PredictionService
 from services.race_service import RaceService
 from services.recommendation_service import RecommendationService
+from services.report_service import ReportService
 
 
 # ── Pure form calculator ─────────────────────────────────────────────
@@ -181,6 +184,87 @@ def test_recommendations_persisted(model_db: Path):
 
     repo = RecommendationRepository(db_path=model_db)
     assert len(repo.get_by_race(12)) == 5
+
+
+# ── Odds service ─────────────────────────────────────────────────────
+def test_odds_resolve_and_manual(model_db: Path):
+    svc = OddsService(db_path=model_db)
+    # Code match.
+    assert svc.resolve_driver("D1")["id"] == 1
+    # Surname match ("L3" is driver 3's surname in the fixture).
+    assert svc.resolve_driver("L3")["id"] == 3
+    assert svc.resolve_driver("nobody") is None
+
+    bet_id = svc.add_manual_odds(1, 1, "race_winner", "book", 4.0)
+    assert bet_id > 0
+    with pytest.raises(ValueError):
+        svc.add_manual_odds(1, 1, "race_winner", "book", 0.9)
+
+
+def test_odds_overround(model_db: Path):
+    svc = OddsService(db_path=model_db)
+    # Fixture seeded odds for race 12 (5 drivers).
+    over = svc.market_overround(12, "race_winner")
+    assert over is not None
+    # Bookmaker book should carry a positive margin.
+    assert over > 0
+
+
+def test_odds_scrape_and_store_matches(model_db: Path, monkeypatch):
+    svc = OddsService(db_path=model_db)
+    html = (
+        "<table><tr><th>Driver</th><th>Odds</th></tr>"
+        "<tr><td>D1</td><td>2.0</td></tr>"
+        "<tr><td>Nobody</td><td>3.0</td></tr></table>"
+    )
+    monkeypatch.setattr(svc._scraper, "fetch", lambda url: html)
+    summary = svc.scrape_and_store("http://x", 1, "race_winner", "scraped")
+    assert summary["stored"] == 1
+    assert "Nobody" in summary["unmatched"]
+
+
+# ── Bet service ──────────────────────────────────────────────────────
+def test_bet_lifecycle_and_pnl(model_db: Path):
+    svc = BetService(db_path=model_db)
+    win = svc.place_bet(12, 1, "race_winner", 2.0, 100.0)
+    loss = svc.place_bet(12, 2, "race_winner", 3.0, 50.0)
+    assert svc.pnl_summary()["total_bets"] == 0  # nothing settled yet
+
+    assert svc.settle_bet(win, "win") is True   # payout defaults to 200
+    assert svc.settle_bet(loss, "loss") is True
+    summary = svc.pnl_summary()
+    assert summary["total_bets"] == 2
+    assert summary["wins"] == 1
+    # Profit: +100 (win) - 50 (loss) = 50 on 150 staked -> ROI 33.33%.
+    assert summary["total_profit_loss"] == pytest.approx(50.0)
+    assert summary["roi_pct"] == pytest.approx(33.33, abs=0.01)
+    assert len(svc.pnl_timeline()) == 2
+
+
+def test_bet_validation(model_db: Path):
+    svc = BetService(db_path=model_db)
+    with pytest.raises(ValueError):
+        svc.place_bet(12, 1, "race_winner", 1.0, 10.0)
+    with pytest.raises(ValueError):
+        svc.place_bet(12, 1, "race_winner", 2.0, 0.0)
+
+
+# ── Report service ───────────────────────────────────────────────────
+def test_report_exports(model_db: Path):
+    rec = RecommendationService(db_path=model_db)
+    rec.generate_for_race(12)
+    svc = ReportService(db_path=model_db)
+
+    csv_path = svc.export_recommendations_csv(12)
+    xlsx_path = svc.export_recommendations_excel(12)
+    pdf_path = svc.generate_prerace_pdf(12)
+    try:
+        assert csv_path.exists() and csv_path.stat().st_size > 0
+        assert xlsx_path.exists() and xlsx_path.stat().st_size > 0
+        assert pdf_path.exists() and pdf_path.stat().st_size > 0
+    finally:
+        for p in (csv_path, xlsx_path, pdf_path):
+            p.unlink(missing_ok=True)
 
 
 def test_race_service(seeded_db: Path):
