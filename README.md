@@ -85,7 +85,7 @@ The platform is built incrementally. Current status:
 |------|-------|--------|
 | **1 — Foundation** | Structure, config, schema, connection, base repo, app shell, all pages | ✅ Delivered |
 | **2 — Data Pipeline** | Repositories, CSV seeder, Settings import | ✅ Repos + seeder; ⏳ Settings upload |
-| **3 — Analysis Engine** | Analysis modules, visualisations, analysis pages | ⏳ Planned |
+| **3 — Analysis Engine** | Analysis modules, visualisations, analysis + dashboard pages | ✅ Delivered |
 | **4 — Models & Betting Core** | Calculators, feature engineering, models, prediction/recommendation services | ✅ Calculators; ⏳ Models |
 | **5 — Odds, Scraping, Reports** | Scrapers, odds service, reports, full integration | ✅ Scraper core; ⏳ Integration |
 
@@ -94,9 +94,16 @@ The platform is built incrementally. Current status:
 - **Runnable Streamlit shell** with all 12 pages in the sidebar.
 - **SQLite schema** auto-initialised on launch; **Settings** page shows live
   row counts per table.
+- **Dashboard, Historical, Driver, Constructor and Circuit Analysis** pages —
+  live over seeded data, with form charts, skill radars, head-to-heads,
+  standings, circuit profiles and grid-importance stats.
 - **Playground** page — fully interactive odds/EV/Kelly/arbitrage/dutching/
   overround/bankroll/risk-of-ruin calculators.
-- **Calculators**, **repositories** and the **CSV seeder** covered by `pytest`.
+- **Analysis engine** (driver/constructor/circuit/qualifying/form) and the
+  **service layer** (driver/constructor/circuit/race) with a themed Plotly
+  chart/radar/heatmap toolkit.
+- **Calculators**, **repositories**, **CSV seeder**, **analysis** and
+  **services** covered by `pytest` (38 passing).
 
 ---
 

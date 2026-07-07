@@ -47,6 +47,10 @@ VERDICT_COLORS: dict[str, str] = {
 
 _TEMPLATE_NAME: str = "pitwall"
 
+# Lazily-built, process-wide singleton so charts can apply the theme object
+# directly without depending on it having been registered by name first.
+_TEMPLATE: go.layout.Template | None = None
+
 
 def _build_template() -> go.layout.Template:
     """Construct the PitWall Plotly template."""
@@ -75,20 +79,34 @@ def _build_template() -> go.layout.Template:
     return template
 
 
+def get_template() -> go.layout.Template:
+    """Return the process-wide PitWall template object, building it once."""
+    global _TEMPLATE
+    if _TEMPLATE is None:
+        _TEMPLATE = _build_template()
+    return _TEMPLATE
+
+
 def register_theme() -> str:
     """Register the PitWall template with Plotly and make it the default.
 
-    Idempotent — safe to call on every Streamlit rerun.
+    Idempotent — safe to call on every Streamlit rerun. Registration is a
+    convenience for app-level defaults; :func:`apply_theme` does not depend on
+    it, so charts render correctly even when a page is opened directly.
 
     Returns:
         The registered template name.
     """
-    pio.templates[_TEMPLATE_NAME] = _build_template()
+    pio.templates[_TEMPLATE_NAME] = get_template()
     pio.templates.default = _TEMPLATE_NAME
     return _TEMPLATE_NAME
 
 
 def apply_theme(fig: go.Figure) -> go.Figure:
-    """Apply the PitWall template to an existing figure and return it."""
-    fig.update_layout(template=_TEMPLATE_NAME)
+    """Apply the PitWall template object to a figure and return it.
+
+    Applies the Template *object* (not its registered name) so it works in any
+    process, including a Streamlit page opened without ``app.py`` having run.
+    """
+    fig.update_layout(template=get_template())
     return fig
