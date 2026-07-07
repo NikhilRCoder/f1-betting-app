@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+
+# ─────────────────────────────────────────────
+# Virtual environments
+# ─────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.conda/
+
+# ─────────────────────────────────────────────
+# Testing / coverage
+# ─────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# ─────────────────────────────────────────────
+# Databases (generated at runtime)
+# ─────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/processed/*
+
+# ─────────────────────────────────────────────
+# Generated artefacts
+# ─────────────────────────────────────────────
+exports/*
+reports/*
+!exports/.gitkeep
+!reports/.gitkeep
+logs/
+*.log
+
+# ─────────────────────────────────────────────
+# Raw data dumps (keep the folder, ignore bulk CSVs)
+# ─────────────────────────────────────────────
+data/csv/*.csv
+
+# ─────────────────────────────────────────────
+# Streamlit
+# ─────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ─────────────────────────────────────────────
+# Editor / OS
+# ─────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
