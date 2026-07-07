@@ -86,7 +86,7 @@ The platform is built incrementally. Current status:
 | **1 — Foundation** | Structure, config, schema, connection, base repo, app shell, all pages | ✅ Delivered |
 | **2 — Data Pipeline** | Repositories, CSV seeder, Settings import | ✅ Repos + seeder; ⏳ Settings upload |
 | **3 — Analysis Engine** | Analysis modules, visualisations, analysis + dashboard pages | ✅ Delivered |
-| **4 — Models & Betting Core** | Calculators, feature engineering, models, prediction/recommendation services | ✅ Calculators; ⏳ Models |
+| **4 — Models & Betting Core** | Calculators, feature engineering, models, prediction/recommendation services, Playground/Model-Testing/Recommendations pages | ✅ Delivered |
 | **5 — Odds, Scraping, Reports** | Scrapers, odds service, reports, full integration | ✅ Scraper core; ⏳ Integration |
 
 ### What works today
@@ -102,8 +102,16 @@ The platform is built incrementally. Current status:
 - **Analysis engine** (driver/constructor/circuit/qualifying/form) and the
   **service layer** (driver/constructor/circuit/race) with a themed Plotly
   chart/radar/heatmap toolkit.
-- **Calculators**, **repositories**, **CSV seeder**, **analysis** and
-  **services** covered by `pytest` (38 passing).
+- **Prediction models** — Elo, power ratings, Bayesian, Monte Carlo, logistic
+  regression and XGBoost behind a shared `BaseModel` interface, combined by a
+  weighted **ensemble** over a leak-free feature pipeline.
+- **Recommendation engine** — compares model vs bookmaker probability to compute
+  edge, EV, Kelly stake and a weighted 0-100 confidence score, then assigns a
+  verdict (`STRONG_BET`/`SMALL_EDGE`/`NO_BET`/`AVOID`) with a written rationale.
+- **Recommendations**, **Model Testing** (leak-free season backtest + calibration)
+  and **Monte Carlo simulator** pages, all live.
+- **Calculators**, **repositories**, **CSV seeder**, **feature engineering**,
+  **models**, **analysis** and **services** covered by `pytest` (55 passing).
 
 ---
 

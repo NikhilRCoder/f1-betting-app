@@ -11,7 +11,9 @@ from visualizations import charts, theme
 from services.circuit_service import CircuitService
 from services.constructor_service import ConstructorService
 from services.driver_service import DriverService
+from services.prediction_service import PredictionService
 from services.race_service import RaceService
+from services.recommendation_service import RecommendationService
 
 
 # ── Pure form calculator ─────────────────────────────────────────────
@@ -139,6 +141,46 @@ def test_circuit_service(seeded_db: Path):
     # Monaco race won from pole -> 100% conversion.
     assert profile["pole_conversion"] == pytest.approx(1.0)
     assert profile["top_drivers"][0]["code"] == "VER"
+
+
+# ── Prediction + recommendation engine ───────────────────────────────
+def test_prediction_service_predicts_field(model_db: Path):
+    svc = PredictionService(db_path=model_db)
+    result = svc.predict_race(12)
+    ensemble = result["ensemble"]
+    assert result["field_size"] == 5
+    assert ensemble["probability"].sum() == pytest.approx(1.0, abs=1e-6)
+    # Strongest driver (1) should be the model favourite.
+    favourite = int(ensemble.sort_values("probability", ascending=False).iloc[0]["driver_id"])
+    assert favourite == 1
+
+
+def test_recommendation_engine_flags_value(model_db: Path):
+    svc = RecommendationService(db_path=model_db)
+    recs = svc.generate_for_race(12, market="race_winner")
+    assert len(recs) == 5
+    # Sorted by EV descending.
+    evs = [r["expected_value"] for r in recs]
+    assert evs == sorted(evs, reverse=True)
+    top = recs[0]
+    # Driver 1 is underpriced by the book (2.5 => 40% vs model ~75%): +EV value.
+    assert top["driver_id"] == 1
+    assert top["expected_value"] > 0
+    assert top["edge_pct"] > 0
+    assert 0 <= top["confidence"] <= 100
+    assert top["verdict"] in {"STRONG_BET", "SMALL_EDGE"}
+    assert "Model predicts" in top["explanation"]
+
+
+def test_recommendations_persisted(model_db: Path):
+    svc = RecommendationService(db_path=model_db)
+    svc.generate_for_race(12)
+    # Re-running must not duplicate rows for the race/market.
+    svc.generate_for_race(12)
+    from database.repositories.recommendations import RecommendationRepository
+
+    repo = RecommendationRepository(db_path=model_db)
+    assert len(repo.get_by_race(12)) == 5
 
 
 def test_race_service(seeded_db: Path):
