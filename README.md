@@ -56,6 +56,17 @@ Run the tests with:
 pytest
 ```
 
+## Deployment
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for local, Streamlit Community Cloud and
+Docker instructions. A `Dockerfile`, `.dockerignore`, `.streamlit/config.toml`
+and `packages.txt` are included:
+
+```bash
+docker build -t pitwall .
+docker run -p 8501:8501 -v pitwall_data:/app/data pitwall
+```
+
 ---
 
 ## Loading data

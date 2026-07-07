@@ -1,0 +1,22 @@
+# Streamlit runtime configuration for PitWall.
+# Applies in local, container and cloud deployments.
+
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
+enableXsrfProtection = true
+# Allow larger CSV uploads on the Settings page (MB).
+maxUploadSize = 400
+
+[browser]
+gatherUsageStats = false
+
+# Dark "Bloomberg terminal" theme matching visualizations/theme.py.
+[theme]
+base = "dark"
+primaryColor = "#e63946"
+backgroundColor = "#0a0a0f"
+secondaryBackgroundColor = "#111118"
+textColor = "#c8c8d4"
+font = "monospace"
