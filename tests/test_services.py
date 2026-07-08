@@ -186,6 +186,83 @@ def test_recommendations_persisted(model_db: Path):
     assert len(repo.get_by_race(12)) == 5
 
 
+# ── CSV import (Settings page backend) ───────────────────────────────
+class _FakeUpload:
+    """Minimal stand-in for a Streamlit UploadedFile."""
+
+    def __init__(self, name: str, data: bytes) -> None:
+        self.name = name
+        self._data = data
+
+    def getbuffer(self) -> bytes:
+        return self._data
+
+
+def test_seed_from_uploaded(tmp_path: Path):
+    from database.connection import initialize_database
+    from database.repositories.drivers import DriverRepository
+    from database.seed import seed_from_uploaded
+
+    db = tmp_path / "up.db"
+    initialize_database(db)
+    files = [
+        _FakeUpload(
+            "drivers.csv",
+            b"driverId,driverRef,code,forename,surname,dob,nationality\n"
+            b"1,verstappen,VER,Max,Verstappen,1997-09-30,Dutch\n",
+        ),
+        _FakeUpload(
+            "races.csv",
+            b"raceId,year,round,circuitId,name,date,time\n"
+            b"1,2024,1,1,Bahrain GP,2024-03-02,15:00:00\n",
+        ),
+        _FakeUpload(
+            "circuits.csv",
+            b"circuitId,circuitRef,name,location,country,lat,lng,alt\n"
+            b"1,bahrain,Bahrain,Sakhir,Bahrain,26.0,50.5,7\n",
+        ),
+    ]
+    counts = seed_from_uploaded(files, db_path=db, dest_dir=tmp_path / "csv")
+    assert counts["drivers"] == 1
+    assert counts["races"] == 1
+    assert DriverRepository(db_path=db).get_by_code("VER")["last_name"] == "Verstappen"
+
+
+def test_import_dataframe_matches_columns(tmp_path: Path):
+    import pandas as pd
+
+    from database.connection import initialize_database
+    from database.repositories.drivers import DriverRepository
+    from database.seed import import_dataframe
+
+    db = tmp_path / "single.db"
+    initialize_database(db)
+    df = pd.DataFrame(
+        [
+            {"id": 7, "code": "HAM", "first_name": "Lewis", "last_name": "Hamilton",
+             "full_name": "Lewis Hamilton", "ignored_col": "dropped"},
+        ]
+    )
+    n = import_dataframe("drivers", df, db_path=db)
+    assert n == 1
+    rec = DriverRepository(db_path=db).get_by_id(7)
+    assert rec["code"] == "HAM"
+    # Unknown column must be ignored, not error.
+    assert "ignored_col" not in rec
+
+
+def test_import_dataframe_rejects_unknown_table(tmp_path: Path):
+    import pandas as pd
+
+    from database.connection import initialize_database
+    from database.seed import import_dataframe
+
+    db = tmp_path / "bad.db"
+    initialize_database(db)
+    with pytest.raises(ValueError):
+        import_dataframe("not_a_table", pd.DataFrame([{"x": 1}]), db_path=db)
+
+
 # ── Odds service ─────────────────────────────────────────────────────
 def test_odds_resolve_and_manual(model_db: Path):
     svc = OddsService(db_path=model_db)
