@@ -5,6 +5,7 @@ model/bankroll configuration arrives in later polish.
 """
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +13,7 @@ import streamlit as st
 
 from config import settings
 from database.connection import get_connection
+from database.ergast_import import import_from_ergast
 from database.seed import import_dataframe, seed_database, seed_from_uploaded
 from utilities.ui import bootstrap_page
 
@@ -68,7 +70,58 @@ _ERGAST_FILES = (
     "results.csv", "qualifying.csv", "pit_stops.csv", "status.csv",
 )
 
-bundle_tab, single_tab = st.tabs(["Ergast CSV bundle", "Single table CSV"])
+online_tab, bundle_tab, single_tab = st.tabs(
+    ["Fetch online (Jolpica API)", "Ergast CSV bundle", "Single table CSV"]
+)
+
+# --- Online fetch: automatic, no files needed ---
+with online_tab:
+    st.caption(
+        "Download data automatically from the Jolpica-F1 API (the maintained "
+        "Ergast successor) — no CSV files needed. Requires an internet "
+        "connection. Re-importing is safe. Larger ranges take longer (a polite "
+        "delay is used between requests)."
+    )
+    this_year = date.today().year
+    fc1, fc2, fc3 = st.columns(3)
+    year_from = fc1.number_input(
+        "From season", min_value=1950, max_value=this_year, value=this_year - 2
+    )
+    year_to = fc2.number_input(
+        "To season", min_value=1950, max_value=this_year, value=this_year
+    )
+    include_pits = fc3.checkbox("Include pit stops (2011+)", value=True)
+
+    if st.button("Fetch & import", type="primary", key="online_import"):
+        if year_from > year_to:
+            st.warning("'From' season must not be after 'To' season.")
+        else:
+            years = list(range(int(year_from), int(year_to) + 1))
+            with st.status(f"Importing seasons {years[0]}–{years[-1]}…", expanded=True) as status:
+                try:
+                    result = import_from_ergast(
+                        years,
+                        include_pitstops=include_pits,
+                        progress=lambda msg: status.write(msg),
+                    )
+                    total = sum(result.values())
+                    status.update(
+                        label=f"Imported {total:,} rows.", state="complete"
+                    )
+                    st.dataframe(
+                        pd.DataFrame(
+                            sorted(result.items()), columns=["table", "rows imported"]
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    _table_counts.clear()
+                except Exception as exc:  # noqa: BLE001 - surface network/API errors
+                    status.update(label="Import failed", state="error")
+                    st.error(
+                        f"Fetch failed: {exc}. Check your internet connection and "
+                        "try a smaller season range."
+                    )
 
 # --- Ergast bundle: the reliable way to load real F1 data ---
 with bundle_tab:

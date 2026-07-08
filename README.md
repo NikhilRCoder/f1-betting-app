@@ -71,7 +71,24 @@ docker run -p 8501:8501 -v pitwall_data:/app/data pitwall
 
 ## Loading data
 
-Historical data comes from **Ergast-style CSV dumps** — no live APIs. Place the
+The **Settings** page offers three ways to load data, in order of convenience:
+
+1. **Fetch online (Jolpica-F1 API)** — pick a season range and click *Fetch &
+   import*. Pulls drivers, constructors, circuits, races, results, qualifying
+   and pit stops automatically from the maintained Ergast successor. No files
+   needed (requires internet).
+2. **Ergast CSV bundle** — upload the standard Ergast CSVs (or point at a
+   folder). Good for offline / bulk historical loads.
+3. **Single table CSV** — upload one CSV whose columns match a table.
+
+Programmatically, the same paths are available:
+
+```python
+from database.ergast_import import import_from_ergast
+import_from_ergast(range(2021, 2025))     # online, via Jolpica-F1
+```
+
+Historical data can also come from **Ergast-style CSV dumps**. Place the
 CSV files under `data/csv/` and seed the database:
 
 ```python
