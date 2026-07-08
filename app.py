@@ -18,6 +18,7 @@ import streamlit as st
 from config import settings
 from config.logging_config import get_logger
 from database.connection import database_exists, initialize_database
+from utilities.ui import inject_theme
 from visualizations.theme import register_theme
 
 logger = get_logger(__name__)
@@ -47,40 +48,49 @@ def main() -> None:
         layout="wide",
     )
     bootstrap()
+    inject_theme()
 
-    st.title(f"{settings.APP_ICON}  {settings.APP_NAME}")
-    st.subheader(settings.APP_TAGLINE)
-    st.caption(f"v{settings.APP_VERSION}")
+    st.markdown(
+        f"""
+        <div class="pw-header">
+            <p class="pw-title">{settings.APP_ICON}&nbsp;{settings.APP_NAME}</p>
+            <p class="pw-sub">{settings.APP_TAGLINE} · v{settings.APP_VERSION}</p>
+        </div>
+        <hr class="pw-rule"/>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "**PitWall** is a quantitative research platform for Formula One betting "
+        "markets — it models race outcomes, compares model probabilities against "
+        "bookmaker odds, detects value, and tracks profit & loss."
+    )
 
     st.markdown(
         """
-        **PitWall** is a quantitative research platform for Formula One betting
-        markets. It models race outcomes, compares model probabilities against
-        bookmaker odds, detects value, and tracks profit & loss.
-
-        Use the sidebar to navigate. Pages are delivered across five build
-        phases — some are still placeholders while the data and model layers are
-        wired up.
-        """
+        <div class="pw-cards">
+            <div class="pw-card">
+                <div class="pw-ico">📊</div><h4>Analyse</h4>
+                <p>Drivers, constructors and circuits, backed by historical data.</p>
+            </div>
+            <div class="pw-card">
+                <div class="pw-ico">🎯</div><h4>Predict</h4>
+                <p>An ensemble of models produces calibrated outcome probabilities.</p>
+            </div>
+            <div class="pw-card">
+                <div class="pw-ico">💰</div><h4>Profit</h4>
+                <p>Value detection, Kelly staking and bankroll-aware recommendations.</p>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.divider()
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("### 📊 Analyse")
-        st.caption("Drivers, constructors and circuits, backed by historical data.")
-    with col2:
-        st.markdown("### 🎯 Predict")
-        st.caption("Ensemble models produce calibrated outcome probabilities.")
-    with col3:
-        st.markdown("### 💰 Profit")
-        st.caption("Value detection, staking, and bankroll-aware recommendations.")
-
-    st.divider()
     st.caption(
-        "Select a page from the sidebar to begin. "
-        "Start with **Settings** to import data, then **Odds** and "
-        "**Recommendations**."
+        "Get started in the sidebar — open **Settings** to import data (try "
+        "**Fetch online**), then explore **Recommendations** and the analysis "
+        "pages."
     )
 
 
