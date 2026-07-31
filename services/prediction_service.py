@@ -161,6 +161,59 @@ class PredictionService:
             "field_size": len(race_rows),
         }
 
+    def predict_markets(self, race_id: int) -> dict[str, Any]:
+        """Predict multiple markets for a race from the ensemble win model.
+
+        The calibrated ensemble win probabilities are used as Plackett–Luce
+        strengths and simulated to produce podium / top-5 / top-10 probabilities;
+        the win market uses the ensemble directly.
+
+        Returns:
+            A dict with ``markets`` (market → DataFrame[driver_id, probability]),
+            ``per_model`` and ``field_size``.
+        """
+        from models.monte_carlo import simulate_markets
+
+        base = self.predict_race(race_id)
+        ensemble = base["ensemble"]
+        if ensemble is None or ensemble.empty:
+            return {"markets": {}, "per_model": {}, "field_size": 0}
+
+        strengths = {
+            int(r["driver_id"]): max(float(r["probability"]), 1e-9)
+            for _, r in ensemble.iterrows()
+        }
+        sim = simulate_markets(strengths, n_sims=10_000, seed=42)
+        markets: dict[str, pd.DataFrame] = {"race_winner": ensemble}
+        for market in ("podium", "top5", "top10"):
+            markets[market] = pd.DataFrame(
+                {
+                    "driver_id": list(sim),
+                    "probability": [sim[d][market] for d in sim],
+                }
+            )
+        return {
+            "markets": markets,
+            "per_model": base["per_model"],
+            "field_size": base["field_size"],
+        }
+
+    def head_to_head(self, race_id: int, driver_a: int, driver_b: int) -> dict[str, Any]:
+        """Return P(``driver_a`` finishes ahead of ``driver_b``) and the inverse."""
+        from models.monte_carlo import head_to_head_prob
+
+        base = self.predict_race(race_id)
+        ensemble = base["ensemble"]
+        if ensemble is None or ensemble.empty:
+            return {"a_prob": None, "b_prob": None}
+        strengths = {
+            int(r["driver_id"]): float(r["probability"]) for _, r in ensemble.iterrows()
+        }
+        if driver_a not in strengths or driver_b not in strengths:
+            return {"a_prob": None, "b_prob": None}
+        a_prob = head_to_head_prob(strengths, driver_a, driver_b)
+        return {"a_prob": a_prob, "b_prob": 1.0 - a_prob}
+
     def backtest(
         self, season: int, model_names: list[str] | None = None
     ) -> dict[str, Any]:

@@ -190,6 +190,29 @@ def test_recommendation_engine_flags_value(model_db: Path):
     assert "Model predicts" in top["explanation"]
 
 
+def test_predict_markets_and_h2h(model_db: Path):
+    svc = PredictionService(db_path=model_db)
+    out = svc.predict_markets(12)
+    markets = out["markets"]
+    assert set(markets) >= {"race_winner", "podium", "top5", "top10"}
+    for name, df in markets.items():
+        assert not df.empty
+        # Ranked markets are per-driver probabilities in [0, 1].
+        assert (df["probability"] >= 0).all() and (df["probability"] <= 1).all()
+    # Podium prob for the field should exceed win prob on aggregate.
+    assert markets["podium"]["probability"].sum() > markets["race_winner"]["probability"].sum()
+
+    # Head-to-head is complementary and favours the stronger driver (id 1).
+    h2h = svc.head_to_head(12, 1, 5)
+    assert h2h["a_prob"] + h2h["b_prob"] == pytest.approx(1.0)
+    assert h2h["a_prob"] > 0.5
+
+
+def test_h2h_market_skipped_in_recommendations(model_db: Path):
+    svc = RecommendationService(db_path=model_db)
+    assert svc.generate_for_race(12, market="h2h") == []
+
+
 def test_recommendations_persisted(model_db: Path):
     svc = RecommendationService(db_path=model_db)
     svc.generate_for_race(12)

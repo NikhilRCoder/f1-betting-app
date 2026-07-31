@@ -57,6 +57,29 @@ def simulate_markets(
     return result
 
 
+def head_to_head_prob(strengths: Mapping[int, float], a: int, b: int) -> float:
+    """Return P(driver ``a`` finishes ahead of driver ``b``).
+
+    Under the Plackett–Luce model this has the closed form
+    ``s_a / (s_a + s_b)`` where ``s`` is each driver's strength (win
+    probability). Deterministic — no simulation needed.
+
+    Args:
+        strengths: Mapping of driver id to a positive strength.
+        a: The primary driver id.
+        b: The comparison driver id.
+
+    Returns:
+        Probability in [0, 1] that ``a`` beats ``b``.
+
+    Raises:
+        KeyError: If either driver id is absent from ``strengths``.
+    """
+    sa = max(float(strengths[a]), 1e-9)
+    sb = max(float(strengths[b]), 1e-9)
+    return sa / (sa + sb)
+
+
 class MonteCarloModel(BaseModel):
     """Monte Carlo win model driven by power-ratings strengths."""
 

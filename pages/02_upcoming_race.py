@@ -9,8 +9,10 @@ import pandas as pd
 import streamlit as st
 
 from config import settings
+from database.repositories.drivers import DriverRepository
 from services.circuit_service import CircuitService
 from services.odds_service import OddsService
+from services.prediction_service import PredictionService
 from services.race_service import RaceService
 from services.recommendation_service import RecommendationService
 from utilities.formatters import format_percentage, format_signed_percentage
@@ -23,10 +25,17 @@ bootstrap_page("Upcoming Race", icon="🏁")
 
 @st.cache_resource
 def _services():
-    return RaceService(), CircuitService(), OddsService(), RecommendationService()
+    return (
+        RaceService(),
+        CircuitService(),
+        OddsService(),
+        RecommendationService(),
+        PredictionService(),
+        DriverRepository(),
+    )
 
 
-races_svc, circuit_svc, odds_svc, rec_svc = _services()
+races_svc, circuit_svc, odds_svc, rec_svc, pred_svc, drivers_repo = _services()
 seasons = races_svc.list_seasons()
 
 if not seasons:
@@ -102,3 +111,39 @@ elif recs is not None:
     st.caption("No recommendations (no odds for this race yet).")
 else:
     st.caption("Click above to run the models and detect value against the odds.")
+
+# ── Head-to-head ─────────────────────────────────────────────────────
+st.markdown("#### Head-to-head")
+st.caption(
+    "Model probability that one driver finishes ahead of another "
+    "(Plackett–Luce over the ensemble)."
+)
+field = drivers_repo.query(
+    """
+    SELECT DISTINCT d.id, d.full_name, d.code
+    FROM results res JOIN drivers d ON d.id = res.driver_id
+    WHERE res.race_id = ?
+    ORDER BY d.last_name
+    """,
+    (race_id,),
+)
+if len(field) < 2:
+    st.caption("Not enough drivers with data for this race to compare.")
+else:
+    names = {d["id"]: f"{d['full_name']} ({d['code']})" for d in field}
+    hc1, hc2 = st.columns(2)
+    driver_a = hc1.selectbox("Driver A", list(names), format_func=lambda i: names[i])
+    driver_b = hc2.selectbox(
+        "Driver B", list(names), format_func=lambda i: names[i],
+        index=min(1, len(names) - 1),
+    )
+    if driver_a == driver_b:
+        st.caption("Pick two different drivers.")
+    else:
+        h2h = pred_svc.head_to_head(race_id, driver_a, driver_b)
+        if h2h["a_prob"] is None:
+            st.caption("No model output for this race yet.")
+        else:
+            m1, m2 = st.columns(2)
+            m1.metric(names[driver_a], format_percentage(h2h["a_prob"]))
+            m2.metric(names[driver_b], format_percentage(h2h["b_prob"]))

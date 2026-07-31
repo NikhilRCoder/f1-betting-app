@@ -42,6 +42,13 @@ race_id = col2.selectbox(
 )
 market = col3.selectbox("Market", options=list(settings.MARKETS))
 
+if market == "h2h":
+    st.info(
+        "Head-to-head is a pairwise market — use the **Upcoming Race** page's "
+        "Head-to-head tool. Pick another market here for the ranked value table."
+    )
+    st.stop()
+
 if st.button("Generate recommendations", type="primary"):
     with st.spinner("Training models and evaluating value…"):
         st.session_state["recs"] = rec_svc.generate_for_race(race_id, market=market)

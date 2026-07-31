@@ -74,15 +74,23 @@ class RecommendationService:
         Returns:
             A list of recommendation dicts sorted by expected value (desc).
         """
-        prediction = self._predictions.predict_race(race_id, market=market)
-        ensemble = prediction["ensemble"]
-        if ensemble is None or ensemble.empty:
-            logger.info("No predictions available for race %s.", race_id)
+        if market == "h2h":
+            logger.info("h2h is a pairwise market — use the head-to-head tool.")
+            return []
+
+        prediction = self._predictions.predict_markets(race_id)
+        markets = prediction.get("markets", {})
+        market_df = markets.get(market)
+        if market_df is None or market_df.empty:
+            logger.info("No predictions available for race %s / %s.", race_id, market)
             return []
 
         race = self._races.get_by_id(race_id)
         circuit_id = race["circuit_id"] if race else None
-        model_prob = {int(r["driver_id"]): float(r["probability"]) for _, r in ensemble.iterrows()}
+        model_prob = {
+            int(r["driver_id"]): float(r["probability"])
+            for _, r in market_df.iterrows()
+        }
         per_model = prediction["per_model"]
 
         recommendations: list[dict[str, Any]] = []
