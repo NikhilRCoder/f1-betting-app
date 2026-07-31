@@ -12,6 +12,7 @@ from config import settings
 from database.repositories.drivers import DriverRepository
 from services.circuit_service import CircuitService
 from services.odds_service import OddsService
+from services.pipeline_service import WeekendPipeline
 from services.prediction_service import PredictionService
 from services.race_service import RaceService
 from services.recommendation_service import RecommendationService
@@ -32,10 +33,13 @@ def _services():
         RecommendationService(),
         PredictionService(),
         DriverRepository(),
+        WeekendPipeline(),
     )
 
 
-races_svc, circuit_svc, odds_svc, rec_svc, pred_svc, drivers_repo = _services()
+(
+    races_svc, circuit_svc, odds_svc, rec_svc, pred_svc, drivers_repo, pipeline
+) = _services()
 seasons = races_svc.list_seasons()
 
 if not seasons:
@@ -111,6 +115,39 @@ elif recs is not None:
     st.caption("No recommendations (no odds for this race yet).")
 else:
     st.caption("Click above to run the models and detect value against the odds.")
+
+# ── Race weekend pipeline ────────────────────────────────────────────
+st.markdown("#### Race weekend")
+st.caption(
+    "One click: evaluate value across win / podium / top-5 / top-10, flag "
+    "STRONG_BETs and generate the pre-race PDF."
+)
+if st.button("Run full weekend"):
+    with st.spinner("Running models across all markets…"):
+        st.session_state["ur_weekend"] = pipeline.run(race_id, make_pdf=True)
+
+wk = st.session_state.get("ur_weekend")
+if wk and st.session_state.get("ur_weekend", {}).get("race_id") == race_id:
+    strong = wk["strong_bets"]
+    if strong:
+        st.success(f"🔔 {len(strong)} STRONG_BET opportunity(ies) detected.")
+        for r in strong:
+            st.markdown(
+                f"- **Driver {r['driver_id']}** [{r['market']}] — "
+                f"model {format_percentage(r['model_probability'])} vs implied "
+                f"{format_percentage(r['implied_probability'])} · "
+                f"EV {r['expected_value']:+.1%} · conf {r['confidence']:.0f}/100"
+            )
+    else:
+        st.info("No STRONG_BET opportunities across the evaluated markets.")
+    cts = ", ".join(f"{m}: {n}" for m, n in wk["counts"].items())
+    st.caption(f"Recommendations generated — {cts}.")
+    if wk["pdf_path"]:
+        with open(wk["pdf_path"], "rb") as fh:
+            st.download_button(
+                "Download pre-race PDF", data=fh.read(),
+                file_name=wk["pdf_path"].split("/")[-1], mime="application/pdf",
+            )
 
 # ── Head-to-head ─────────────────────────────────────────────────────
 st.markdown("#### Head-to-head")

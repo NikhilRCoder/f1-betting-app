@@ -364,6 +364,46 @@ def test_bet_validation(model_db: Path):
         svc.place_bet(12, 1, "race_winner", 2.0, 0.0)
 
 
+# ── Weekend pipeline & alerts ────────────────────────────────────────
+def test_weekend_pipeline(model_db: Path):
+    from services.pipeline_service import WeekendPipeline
+
+    summary = WeekendPipeline(db_path=model_db).run(
+        12, markets=("race_winner",), make_pdf=True
+    )
+    assert summary["race_id"] == 12
+    assert "race_winner" in summary["counts"]
+    assert summary["counts"]["race_winner"] == 5  # 5 priced drivers
+    # The strongly-underpriced favourite should surface as a STRONG_BET.
+    assert any(r["driver_id"] == 1 for r in summary["strong_bets"])
+    assert summary["pdf_path"] and Path(summary["pdf_path"]).exists()
+    Path(summary["pdf_path"]).unlink(missing_ok=True)
+    # No SMTP configured in tests -> no alert sent.
+    assert summary["alert_sent"] is False
+
+
+def test_notify_no_op_when_unconfigured(monkeypatch):
+    from utilities import notify
+
+    for var in ("SMTP_HOST", "ALERT_EMAIL_TO", "SMTP_USER"):
+        monkeypatch.delenv(var, raising=False)
+    assert notify.is_configured() is False
+    assert notify.send_email("subject", "body") is False
+
+
+def test_notify_format_alert():
+    from utilities import notify
+
+    body = notify.format_alert(
+        {"race_id": 1, "race_name": "Test GP", "strong_bets": [
+            {"driver_id": 1, "driver": "Max", "market": "race_winner",
+             "model_probability": 0.7, "implied_probability": 0.4,
+             "expected_value": 0.75, "confidence": 80}
+        ]}
+    )
+    assert "Test GP" in body and "STRONG_BET" in body and "Max" in body
+
+
 # ── Report service ───────────────────────────────────────────────────
 def test_report_exports(model_db: Path):
     rec = RecommendationService(db_path=model_db)

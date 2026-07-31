@@ -105,6 +105,28 @@ re-running is safe.
 
 ---
 
+## Automation & alerts
+
+**Race weekend pipeline** — the Upcoming Race page's *Run full weekend* button
+evaluates value across win / podium / top-5 / top-10, flags STRONG_BETs and
+generates the pre-race PDF in one click.
+
+**Scheduled alerts** — run it unattended:
+
+```bash
+python scripts/weekend_alert.py            # next upcoming race (or latest)
+python scripts/weekend_alert.py --race-id 42
+```
+
+It prints STRONG_BET opportunities and, if SMTP env vars are set
+(`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_TO`, …), emails them.
+Schedule it with **Windows Task Scheduler** or **cron** (e.g. weekly on race
+week).
+
+**Probability calibration** — the Model Testing page's *Calibrate* button fits an
+isotonic map on out-of-sample backtest predictions so the EV/edge the
+recommendation engine reports match observed frequencies.
+
 ## Build phases
 
 The platform is built incrementally. Current status:
