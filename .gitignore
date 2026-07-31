@@ -41,6 +41,7 @@ htmlcov/
 *.sqlite3
 data/*.db
 data/processed/*
+data/calibrator.json
 
 # ─────────────────────────────────────────────
 # Generated artefacts

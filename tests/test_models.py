@@ -91,6 +91,48 @@ def test_ensemble_requires_members():
         EnsembleModel([])
 
 
+def test_calibrator_fit_transform_monotonic():
+    import numpy as np
+
+    from models.calibration import ProbabilityCalibrator
+
+    rng = np.random.default_rng(0)
+    probs = np.linspace(0.01, 0.6, 400)
+    outcomes = (rng.random(400) < probs).astype(int)
+    cal = ProbabilityCalibrator().fit(probs, outcomes)
+    assert cal.fitted
+    out = cal.transform([0.1, 0.3, 0.6])
+    assert all(0.0 <= v <= 1.0 for v in out)
+    # Isotonic map is monotonic non-decreasing.
+    assert out[2] >= out[0]
+
+
+def test_calibrator_identity_when_unfitted():
+    import numpy as np
+
+    from models.calibration import ProbabilityCalibrator
+
+    cal = ProbabilityCalibrator()
+    assert not cal.fitted
+    np.testing.assert_allclose(cal.transform([0.3, 0.7]), [0.3, 0.7], atol=1e-6)
+
+
+def test_calibrator_save_load(tmp_path):
+    import numpy as np
+
+    from models.calibration import ProbabilityCalibrator
+
+    rng = np.random.default_rng(1)
+    probs = np.linspace(0.0, 1.0, 200)
+    outcomes = (rng.random(200) < probs).astype(int)
+    cal = ProbabilityCalibrator().fit(probs, outcomes)
+    path = tmp_path / "cal.json"
+    cal.save(path)
+    loaded = ProbabilityCalibrator.load(path)
+    assert loaded.fitted
+    np.testing.assert_allclose(loaded.transform([0.2, 0.8]), cal.transform([0.2, 0.8]))
+
+
 def test_monte_carlo_markets_are_ordered():
     # Stronger driver should have higher win/podium probabilities.
     markets = simulate_markets({1: 5.0, 2: 3.0, 3: 1.0}, n_sims=20_000, seed=7)

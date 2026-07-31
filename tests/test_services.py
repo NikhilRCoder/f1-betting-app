@@ -158,6 +158,21 @@ def test_prediction_service_predicts_field(model_db: Path):
     assert favourite == 1
 
 
+def test_build_calibrator(model_db: Path):
+    svc = PredictionService(db_path=model_db)
+    calibrator = svc.build_calibrator()
+    # With the multi-season fixture there is enough OOS data to fit.
+    assert calibrator.fitted
+    # A calibrator file is written next to the db and re-loadable.
+    from models.calibration import ProbabilityCalibrator
+
+    reloaded = ProbabilityCalibrator.load(model_db.parent / "calibrator.json")
+    assert reloaded.fitted
+    # predict_race still returns a coherent distribution with calibration applied.
+    ensemble = svc.predict_race(12)["ensemble"]
+    assert ensemble["probability"].sum() == pytest.approx(1.0, abs=1e-6)
+
+
 def test_recommendation_engine_flags_value(model_db: Path):
     svc = RecommendationService(db_path=model_db)
     recs = svc.generate_for_race(12, market="race_winner")

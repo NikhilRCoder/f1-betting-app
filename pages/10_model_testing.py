@@ -34,9 +34,26 @@ season = col1.selectbox("Backtest season", options=seasons)
 all_models = [m.name for m in build_default_models()]
 chosen = col2.multiselect("Models", options=all_models, default=all_models)
 
-if st.button("Run backtest", type="primary"):
+bcol1, bcol2 = st.columns([1, 1])
+if bcol1.button("Run backtest", type="primary"):
     with st.spinner("Retraining before each race and scoring…"):
         st.session_state["bt"] = pred_svc.backtest(season, model_names=chosen)
+
+# Calibration: fit an isotonic map on out-of-sample ensemble predictions so the
+# probabilities used by the recommendation engine match observed frequencies.
+if bcol2.button("Calibrate ensemble on all data"):
+    with st.spinner("Fitting probability calibration (walk-forward)…"):
+        cal = pred_svc.build_calibrator()
+    if cal.fitted:
+        st.success(
+            "Calibration fitted and saved. The Recommendations engine now uses "
+            "calibrated probabilities."
+        )
+    else:
+        st.warning(
+            "Not enough historical data to calibrate yet — load more seasons and "
+            "retry."
+        )
 
 bt = st.session_state.get("bt")
 if not bt:
