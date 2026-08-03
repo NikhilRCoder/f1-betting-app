@@ -56,11 +56,39 @@ Run the tests with:
 pytest
 ```
 
+## Deployment
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for local, Streamlit Community Cloud and
+Docker instructions. A `Dockerfile`, `.dockerignore`, `.streamlit/config.toml`
+and `packages.txt` are included:
+
+```bash
+docker build -t pitwall .
+docker run -p 8501:8501 -v pitwall_data:/app/data pitwall
+```
+
 ---
 
 ## Loading data
 
-Historical data comes from **Ergast-style CSV dumps** — no live APIs. Place the
+The **Settings** page offers three ways to load data, in order of convenience:
+
+1. **Fetch online (Jolpica-F1 API)** — pick a season range and click *Fetch &
+   import*. Pulls drivers, constructors, circuits, races, results, qualifying
+   and pit stops automatically from the maintained Ergast successor. No files
+   needed (requires internet).
+2. **Ergast CSV bundle** — upload the standard Ergast CSVs (or point at a
+   folder). Good for offline / bulk historical loads.
+3. **Single table CSV** — upload one CSV whose columns match a table.
+
+Programmatically, the same paths are available:
+
+```python
+from database.ergast_import import import_from_ergast
+import_from_ergast(range(2021, 2025))     # online, via Jolpica-F1
+```
+
+Historical data can also come from **Ergast-style CSV dumps**. Place the
 CSV files under `data/csv/` and seed the database:
 
 ```python
@@ -77,6 +105,28 @@ re-running is safe.
 
 ---
 
+## Automation & alerts
+
+**Race weekend pipeline** — the Upcoming Race page's *Run full weekend* button
+evaluates value across win / podium / top-5 / top-10, flags STRONG_BETs and
+generates the pre-race PDF in one click.
+
+**Scheduled alerts** — run it unattended:
+
+```bash
+python scripts/weekend_alert.py            # next upcoming race (or latest)
+python scripts/weekend_alert.py --race-id 42
+```
+
+It prints STRONG_BET opportunities and, if SMTP env vars are set
+(`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `ALERT_EMAIL_TO`, …), emails them.
+Schedule it with **Windows Task Scheduler** or **cron** (e.g. weekly on race
+week).
+
+**Probability calibration** — the Model Testing page's *Calibrate* button fits an
+isotonic map on out-of-sample backtest predictions so the EV/edge the
+recommendation engine reports match observed frequencies.
+
 ## Build phases
 
 The platform is built incrementally. Current status:
@@ -86,8 +136,8 @@ The platform is built incrementally. Current status:
 | **1 — Foundation** | Structure, config, schema, connection, base repo, app shell, all pages | ✅ Delivered |
 | **2 — Data Pipeline** | Repositories, CSV seeder, Settings import | ✅ Repos + seeder; ⏳ Settings upload |
 | **3 — Analysis Engine** | Analysis modules, visualisations, analysis + dashboard pages | ✅ Delivered |
-| **4 — Models & Betting Core** | Calculators, feature engineering, models, prediction/recommendation services | ✅ Calculators; ⏳ Models |
-| **5 — Odds, Scraping, Reports** | Scrapers, odds service, reports, full integration | ✅ Scraper core; ⏳ Integration |
+| **4 — Models & Betting Core** | Calculators, feature engineering, models, prediction/recommendation services, Playground/Model-Testing/Recommendations pages | ✅ Delivered |
+| **5 — Odds, Scraping, Reports** | Odds service + page, upcoming-race integration, reports, bet tracker, Dashboard P&L | ✅ Delivered |
 
 ### What works today
 
@@ -102,8 +152,25 @@ The platform is built incrementally. Current status:
 - **Analysis engine** (driver/constructor/circuit/qualifying/form) and the
   **service layer** (driver/constructor/circuit/race) with a themed Plotly
   chart/radar/heatmap toolkit.
-- **Calculators**, **repositories**, **CSV seeder**, **analysis** and
-  **services** covered by `pytest` (38 passing).
+- **Prediction models** — Elo, power ratings, Bayesian, Monte Carlo, logistic
+  regression and XGBoost behind a shared `BaseModel` interface, combined by a
+  weighted **ensemble** over a leak-free feature pipeline.
+- **Recommendation engine** — compares model vs bookmaker probability to compute
+  edge, EV, Kelly stake and a weighted 0-100 confidence score, then assigns a
+  verdict (`STRONG_BET`/`SMALL_EDGE`/`NO_BET`/`AVOID`) with a written rationale.
+- **Recommendations**, **Model Testing** (leak-free season backtest + calibration)
+  and **Monte Carlo simulator** pages, all live.
+- **Odds management** — scrape a URL or enter odds manually; drivers are matched
+  by code/name, implied probability and market overround are computed.
+- **Upcoming Race** integration — circuit profile, current odds, model view and
+  value-highlighted recommendation cards on one page.
+- **Reports** — CSV/Excel exports (recommendations, odds, predictions) and a
+  pre-race PDF.
+- **Bet tracker & Dashboard P&L** — log and settle bets; the Dashboard reports
+  win rate, staked, P&L, ROI, a cumulative-P&L chart and performance by market.
+- **Calculators**, **repositories**, **CSV seeder**, **feature engineering**,
+  **models**, **analysis** and **services** (odds/bets/reports included) covered
+  by `pytest` (61 passing).
 
 ---
 

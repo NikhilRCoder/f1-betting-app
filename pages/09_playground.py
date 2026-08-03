@@ -6,6 +6,7 @@ odds/staking calculators below are live now.
 """
 from __future__ import annotations
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -19,12 +20,14 @@ from calculators import (
     probability,
 )
 from config import settings
+from models import monte_carlo
 from utilities.formatters import (
     format_currency,
     format_percentage,
     format_signed_percentage,
 )
 from utilities.ui import bootstrap_page
+from visualizations import charts
 
 bootstrap_page("Playground", icon="🧮")
 st.caption("Interactive betting calculators, powered by the pure calculators package.")
@@ -39,6 +42,7 @@ tabs = st.tabs(
         "Overround",
         "Bankroll",
         "Risk of Ruin",
+        "Monte Carlo",
     ]
 )
 
@@ -178,3 +182,53 @@ with tabs[7]:
     st.metric("Estimated risk of ruin", format_percentage(ror, decimals=2))
     if ror >= 0.99:
         st.error("Negative edge — ruin is effectively certain over time.")
+
+# ── Monte Carlo race simulator ───────────────────────────────────────
+with tabs[8]:
+    st.subheader("Monte Carlo Race Simulator")
+    st.caption(
+        "Assign each driver a relative strength, then simulate the race "
+        "thousands of times (Plackett–Luce sampling) to estimate market "
+        "probabilities."
+    )
+    n_drivers = st.slider("Number of drivers", 3, 10, 5, key="mc_n")
+    n_sims = st.select_slider(
+        "Simulations", options=[1_000, 5_000, 10_000, 50_000], value=10_000
+    )
+    default_strengths = [round(1.0 + (n_drivers - i) * 0.4, 2) for i in range(n_drivers)]
+    strengths_df = pd.DataFrame(
+        {"driver": [f"Driver {i + 1}" for i in range(n_drivers)], "strength": default_strengths}
+    )
+    edited = st.data_editor(
+        strengths_df, use_container_width=True, hide_index=True, key="mc_editor"
+    )
+    if st.button("Run simulation", type="primary", key="mc_run"):
+        strengths = {i: max(float(s), 1e-6) for i, s in enumerate(edited["strength"])}
+        markets = monte_carlo.simulate_markets(strengths, n_sims=int(n_sims), seed=1)
+        rows = [
+            {
+                "driver": edited["driver"].iloc[i],
+                "win": markets[i]["race_winner"],
+                "podium": markets[i]["podium"],
+                "top5": markets[i]["top5"],
+                "top10": markets[i]["top10"],
+            }
+            for i in strengths
+        ]
+        result_df = pd.DataFrame(rows).sort_values("win", ascending=False)
+        st.plotly_chart(
+            charts.bar_chart(
+                result_df["driver"].tolist(),
+                result_df["win"].tolist(),
+                title="Win probability",
+                y_title="P(win)",
+            ),
+            use_container_width=True,
+        )
+        st.dataframe(
+            result_df.style.format(
+                {"win": "{:.1%}", "podium": "{:.1%}", "top5": "{:.1%}", "top10": "{:.1%}"}
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )

@@ -17,10 +17,11 @@ warning, so a partial dump still loads what it can.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import pandas as pd
 
+from config import settings
 from config.logging_config import get_logger
 from database.connection import get_connection
 
@@ -267,6 +268,84 @@ def seed_database(csv_dir: Path, db_path: Path | None = None) -> dict[str, int]:
     for table, n in counts.items():
         logger.info("Seeded %s: %d rows", table, n)
     return counts
+
+
+def seed_from_uploaded(
+    files: Iterable[Any], db_path: Path | None = None, dest_dir: Path | None = None
+) -> dict[str, int]:
+    """Save uploaded CSV files to disk and run the Ergast seeder.
+
+    Bridges Streamlit's file uploader to :func:`seed_database`. Each item in
+    ``files`` must expose a ``name`` attribute and either ``getbuffer()`` or
+    ``getvalue()`` returning the file bytes (Streamlit ``UploadedFile`` does).
+
+    Args:
+        files: Uploaded file-like objects (e.g. Streamlit ``UploadedFile``).
+        db_path: Optional non-default database path (used by tests).
+        dest_dir: Directory to write the CSVs into. Defaults to
+            :data:`config.settings.CSV_DIR`.
+
+    Returns:
+        A mapping of table name to the number of rows imported.
+    """
+    target = Path(dest_dir) if dest_dir is not None else settings.CSV_DIR
+    target.mkdir(parents=True, exist_ok=True)
+
+    written = 0
+    for upload in files:
+        name = Path(getattr(upload, "name", "")).name
+        if not name.lower().endswith(".csv"):
+            logger.warning("Ignoring non-CSV upload: %s", name or "<unnamed>")
+            continue
+        data = upload.getbuffer() if hasattr(upload, "getbuffer") else upload.getvalue()
+        (target / name).write_bytes(bytes(data))
+        written += 1
+
+    logger.info("Saved %d uploaded CSV(s) to %s", written, target)
+    return seed_database(target, db_path)
+
+
+def import_dataframe(
+    table: str, df: pd.DataFrame, db_path: Path | None = None
+) -> int:
+    """Import a DataFrame into a schema table, keeping only matching columns.
+
+    A generic, schema-aware single-table importer for CSVs whose column names
+    already match a PitWall table. Columns not present in the table are dropped;
+    rows are written with ``INSERT OR REPLACE`` for idempotency.
+
+    Args:
+        table: Target table name. Must be a real table in the schema.
+        df: Rows to import; column names should match the table's columns.
+        db_path: Optional non-default database path (used by tests).
+
+    Returns:
+        The number of rows written.
+
+    Raises:
+        ValueError: If ``table`` is not a known schema table or no columns match.
+    """
+    with get_connection(db_path) as conn:
+        table_info = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    valid_columns = {row["name"] for row in table_info}
+    if not valid_columns:
+        raise ValueError(f"Unknown table '{table}'.")
+
+    use_columns = [c for c in df.columns if c in valid_columns]
+    if not use_columns:
+        raise ValueError(
+            f"None of the CSV columns match table '{table}'. "
+            f"Expected some of: {sorted(valid_columns)}."
+        )
+
+    subset = df[use_columns].where(pd.notna(df[use_columns]), None)
+    rows = [
+        {col: _clean(row[col]) for col in use_columns}
+        for _, row in subset.iterrows()
+    ]
+    written = _bulk_replace(table, use_columns, rows, db_path)
+    logger.info("Imported %d rows into %s (columns: %s)", written, table, use_columns)
+    return written
 
 
 def _seed_seasons_from_csv(csv_dir: Path, db_path: Path | None) -> int:

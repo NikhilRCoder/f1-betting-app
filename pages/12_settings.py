@@ -1,15 +1,20 @@
 """Settings page — configuration and database management.
 
-Thin view. The database-stats section is live now; CSV import and model/
-bankroll configuration arrive in later phases.
+Thin view. Live database stats and CSV import (Ergast bundle + single table);
+model/bankroll configuration arrives in later polish.
 """
 from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from config import settings
 from database.connection import get_connection
+from database.ergast_import import import_from_ergast
+from database.seed import import_dataframe, seed_database, seed_from_uploaded
 from utilities.ui import bootstrap_page
 
 bootstrap_page("Settings", icon="⚙️")
@@ -51,18 +56,140 @@ counts = _table_counts()
 st.dataframe(counts, use_container_width=True, hide_index=True)
 if counts["rows"].sum() == 0:
     st.info(
-        "The database is empty. CSV import (Phase 2) will populate it from "
-        "Ergast dumps."
+        "The database is empty. Use the **Import data** section below to load "
+        "Ergast CSV files, then the analysis, model and recommendation pages "
+        "come to life."
     )
 
-# ── Placeholders for later phases ────────────────────────────────────
+# ── Import data (live) ───────────────────────────────────────────────
 st.divider()
-st.subheader("CSV Import")
-st.caption("Phase 2 — upload a CSV, map it to a table, preview and import.")
+st.subheader("Import data")
 
+_ERGAST_FILES = (
+    "drivers.csv", "constructors.csv", "circuits.csv", "races.csv",
+    "results.csv", "qualifying.csv", "pit_stops.csv", "status.csv",
+)
+
+online_tab, bundle_tab, single_tab = st.tabs(
+    ["Fetch online (Jolpica API)", "Ergast CSV bundle", "Single table CSV"]
+)
+
+# --- Online fetch: automatic, no files needed ---
+with online_tab:
+    st.caption(
+        "Download data automatically from the Jolpica-F1 API (the maintained "
+        "Ergast successor) — no CSV files needed. Requires an internet "
+        "connection. Re-importing is safe. Larger ranges take longer (a polite "
+        "delay is used between requests)."
+    )
+    this_year = date.today().year
+    fc1, fc2, fc3 = st.columns(3)
+    year_from = fc1.number_input(
+        "From season", min_value=1950, max_value=this_year, value=this_year - 2
+    )
+    year_to = fc2.number_input(
+        "To season", min_value=1950, max_value=this_year, value=this_year
+    )
+    include_pits = fc3.checkbox("Include pit stops (2011+)", value=True)
+
+    if st.button("Fetch & import", type="primary", key="online_import"):
+        if year_from > year_to:
+            st.warning("'From' season must not be after 'To' season.")
+        else:
+            years = list(range(int(year_from), int(year_to) + 1))
+            with st.status(f"Importing seasons {years[0]}–{years[-1]}…", expanded=True) as status:
+                try:
+                    result = import_from_ergast(
+                        years,
+                        include_pitstops=include_pits,
+                        progress=lambda msg: status.write(msg),
+                    )
+                    total = sum(result.values())
+                    status.update(
+                        label=f"Imported {total:,} rows.", state="complete"
+                    )
+                    st.dataframe(
+                        pd.DataFrame(
+                            sorted(result.items()), columns=["table", "rows imported"]
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                    _table_counts.clear()
+                except Exception as exc:  # noqa: BLE001 - surface network/API errors
+                    status.update(label="Import failed", state="error")
+                    st.error(
+                        f"Fetch failed: {exc}. Check your internet connection and "
+                        "try a smaller season range."
+                    )
+
+# --- Ergast bundle: the reliable way to load real F1 data ---
+with bundle_tab:
+    st.caption(
+        "Upload the standard Ergast CSV files (or point at a folder that "
+        "contains them). Column mapping, driver codes, lap-time parsing and "
+        "foreign keys are handled automatically. Re-importing is safe."
+    )
+    st.caption("Expected files: " + ", ".join(f"`{f}`" for f in _ERGAST_FILES))
+
+    uploads = st.file_uploader(
+        "Upload Ergast CSV files",
+        type="csv",
+        accept_multiple_files=True,
+        key="ergast_uploads",
+    )
+    folder = st.text_input(
+        "…or a folder path on this machine containing the CSVs",
+        placeholder=str(settings.CSV_DIR),
+    )
+
+    if st.button("Import Ergast data", type="primary"):
+        try:
+            if uploads:
+                result = seed_from_uploaded(uploads)
+            elif folder.strip():
+                result = seed_database(Path(folder.strip()))
+            else:
+                result = None
+                st.warning("Upload files or enter a folder path first.")
+            if result:
+                total = sum(result.values())
+                st.success(f"Imported {total:,} rows across {len(result)} tables.")
+                st.dataframe(
+                    pd.DataFrame(
+                        sorted(result.items()), columns=["table", "rows imported"]
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                _table_counts.clear()
+        except Exception as exc:  # noqa: BLE001 - surface import errors to the user
+            st.error(f"Import failed: {exc}")
+
+# --- Single table: generic, for CSVs whose columns match a table ---
+with single_tab:
+    st.caption(
+        "Upload one CSV whose column names already match a PitWall table. "
+        "Unmatched columns are ignored; rows upsert by primary key."
+    )
+    target_table = st.selectbox("Target table", _TABLES)
+    single = st.file_uploader("Upload CSV", type="csv", key="single_upload")
+    if single is not None:
+        preview = pd.read_csv(single)
+        st.caption(f"Preview — {len(preview):,} rows, {len(preview.columns)} columns")
+        st.dataframe(preview.head(10), use_container_width=True, hide_index=True)
+        if st.button(f"Import into {target_table}"):
+            try:
+                n = import_dataframe(target_table, preview)
+                st.success(f"Imported {n:,} rows into {target_table}.")
+                _table_counts.clear()
+            except Exception as exc:  # noqa: BLE001 - surface import errors
+                st.error(f"Import failed: {exc}")
+
+# ── Placeholder for later polish ─────────────────────────────────────
 st.divider()
 st.subheader("Model & Bankroll Configuration")
 st.caption(
-    "Phase 4/5 — active models, ensemble weights, starting bankroll and "
-    "default Kelly fraction."
+    "Later polish — active models, ensemble weights, starting bankroll and "
+    "default Kelly fraction. For now these use the defaults in config/settings.py."
 )
